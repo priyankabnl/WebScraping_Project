@@ -17,7 +17,7 @@ rowy = []
 def chunker(seq, size):
    return (seq[i:i + size] for i in range(0, len(seq), size))
 
-for j in chunker(data, 100):
+for j in chunker(data, 50):
     for ind in j.index:
         print(ind)
         url = "https://www.abc.com/s/search?q=" + str(data['cat_number'][ind]) + "&show=64"
