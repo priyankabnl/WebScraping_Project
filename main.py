@@ -20,10 +20,11 @@ def chunker(seq, size):
 for j in chunker(data, 50):
     for ind in j.index:
         print(ind)
-        url = "https://www.abc.com/s/search?q=" + str(data['cat_number'][ind]) + "&show=64"
+        url = "https://www.abc.com/s/search?q=" + str(data['cat_number'][ind])
         html_content = requests.get(url).text
         soup = BeautifulSoup(html_content, "lxml")
         k = soup.find_all("div", class_='row no-gutters')
+        title_set = set()
         for div in k:
             all_items = div.find_all(class_='pr-4 col col-12')
             for item in all_items:
@@ -32,14 +33,30 @@ for j in chunker(data, 50):
                     title = title.replace('CAT #:', "")
                     title = title.strip(' ')
                     if title == str(data['cat_number'][ind]):
-                        rowy.append(title)
-        for link in soup.find_all('a', href=True):
-            if link['href'].startswith('/p/'):
-                linky = "https://www.abc.com" + link['href']
-                linkP = linky.split('/')
-                for item in linkP:
-                    if item == str(data['cat_number'][ind].lower()):
-                        rows.append(linky)
+                        if title not in title_set:  # Check if the link has already been added
+                            title_set.add(title)
+                            rowy.append(title)
+                            print(title)
+                            url2 = "https://www.abc.com/s/search?q=" + title
+                            html_content2 = requests.get(url2).text
+                            soup2 = BeautifulSoup(html_content2, "lxml")
+                            count = 0
+                            link_set = set()
+                            for link in soup2.find_all("a", href=True):
+                                if count == 1:
+                                    break
+                                if link['href'].startswith('/p/'):
+                                    linky = "https://www.abc.com" + link['href']
+                                    linkP = linky.split('/')
+                                    for item in linkP:
+                                        if item == str(data['cat_number'][ind].lower()):
+                                            if linky not in link_set:  # Check if the link has already been added
+                                                link_set.add(linky)  # Add the link to the set
+                                                rows.append(linky)
+                                                print(linky)
+                                                count += 1
+
+
 
 for i in range(len(rows)):
     print(i)
@@ -48,13 +65,14 @@ for i in range(len(rows)):
     i = soup.find_all('ul')
     for divy in i:
         AB.append(divy.text.strip().replace("\n", ""))
-    pat = [w.replace('Categories', '') for w in AB]
-    pat = [x.strip(' ') for x in pat]
-    pat = [w.replace('              ', '>') for w in pat]
+    paty = [w.replace('Categories', '') for w in AB]
+    paty = [x.strip(' ') for x in paty]
+    paty = [w.replace('              ', '>') for w in paty]
 
-a = {'CAT': rowy, 'Category': pat}
+
+a = {'CAT': rowy, 'Category': paty}
 df = pd.DataFrame.from_dict(a, orient='index')
 df = df.transpose()
-df.to_csv('output.csv',index= False)
+df.to_csv('rally.csv',index= False)
 
 driver.quit()
