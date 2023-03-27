@@ -4,10 +4,13 @@ import requests
 import selenium.webdriver
 from bs4 import BeautifulSoup
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait                 #### to protect from timeout
+from selenium.webdriver.support import expected_conditions as EC
 options = Options()
 options.binary_location = r"C:\Program Files\Mozilla Firefox\firefox.exe"
 driver = selenium.webdriver.Firefox(options=options, executable_path='C:\webdrivers\geckodriver.exe')
-path = os.path.join('C:' + os.sep, 'Users', 'Pbl', 'Automation _data', 'code''.csv')
+path = os.path.join('C:' + os.sep, 'Users', 'Pbl', 'Automation _data', 'code.csv')
 data = pd.read_csv(path)
 
 rows = []
@@ -57,17 +60,21 @@ for j in chunker(data, 50):
                                                 count += 1
 
 
-
 for i in range(len(rows)):
     print(i)
     driver.get(rows[i])
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    i = soup.find_all('ul')
-    for divy in i:
-        AB.append(divy.text.strip().replace("\n", ""))
-    paty = [w.replace('Categories', '') for w in AB]
-    paty = [x.strip(' ') for x in paty]
-    paty = [w.replace('              ', '>') for w in paty]
+    try:
+        element_present = EC.presence_of_element_located((By.XPATH, "//ul"))
+        WebDriverWait(driver, 10).until(element_present)
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        i = soup.find_all('ul')
+        for divy in i:
+            AB.append(divy.text.strip().replace("\n", ""))
+        paty = [w.replace('Categories', '') for w in AB]
+        paty = [x.strip(' ') for x in paty]
+        paty = [w.replace('              ', '>') for w in paty]
+    except:
+        continue
 
 
 a = {'CAT': rowy, 'Category': paty}
