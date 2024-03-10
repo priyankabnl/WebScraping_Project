@@ -1,0 +1,112 @@
+import pandas as pd
+import os
+import requests
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+
+# Setup for Firefox and Selenium WebDriver
+options = Options()
+options.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'
+driver = webdriver.Firefox(options=options, executable_path='C:\webdrivers\geckodriver.exe')
+
+# CSV file path
+input_csv_file = r"C:\Users\PBansal\Desktop\Automation _data\code.csv"
+data = pd.read_csv(input_csv_file, dtype=str)
+
+# Lists to store scraped data
+rows = []  # To store the hyperlinks
+AB = []  # To store the categories
+rowy = []  # To store the CAT numbers
+
+def chunker(seq, size):
+   return (seq[i:i + size] for i in range(0, len(seq), size))
+
+for j in chunker(data, 50):
+    for ind in j.index:
+        upc_number = str(data['UPC_number'][ind]).strip()
+        print(f"Processing UPC number: {upc_number}")
+
+        url = f'https://www.usa.com/s/search?q={upc_number}'
+        html_content = requests.get(url).text
+        soup = BeautifulSoup(html_content, 'lxml')
+
+        product_found = False
+
+        # Search for product containers
+        for div in soup.find_all('div', class_='row no-gutters'):
+            all_items = div.find_all(class_='col col-12')
+
+            for item in all_items:
+                if 'UPC:' in item.text:
+                    extracted_upc = item.text.strip().split('UPC:')[1].strip()
+                    print(f"Checking item text: '{item.text}'")
+                    print(f"Extracted UPC: '{extracted_upc}'")
+
+                    if extracted_upc.startswith(upc_number) or upc_number.startswith(extracted_upc[:-1]):
+                        product_found = True
+                        # Search for the hyperlink within the same product container
+                        parent_div = item.find_parent('div', class_='pb-0 col col-12')
+                        link = parent_div.find('a', href=True)
+                        if link and link['href'].startswith('/p/'):
+                            hyperlink = 'https://www.usa.com' + link['href']
+                            rows.append(hyperlink)
+                            print(f"Hyperlink matched: {hyperlink}")
+                        else:
+                            rows.append("No Link Found")
+                        break  # Break from all_items loop since product is found
+
+            if not product_found:
+                rows.append("No Link Found")
+
+            rowy.append(upc_number)
+            break  # Break from all_items loop once processed
+
+# Selenium WebDriver to navigate to each hyperlink and scrape additional details
+for index, link in enumerate(rows):
+    print(f"Scraping details for link index {index}: {link}")
+    if link == "No Link Found":
+        AB.append("No Category Found")
+        continue
+
+    try:
+        driver.get(link)
+        # Wait for the required elements to load on the page
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//ul")))
+
+        # Parse the page source with BeautifulSoup
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        ul_elements = soup.find_all('ul')
+        # Assuming the first <ul> has the category information
+        categories = '>'.join([ul.text.strip() for ul in ul_elements]).replace('Categories', '').replace("\n", "")
+        AB.append(categories)
+    except TimeoutException:
+        print(f"Page load timed out for link at index {index}.")
+        AB.append("Page Load Timeout")  # Append a specific placeholder for this error
+    except Exception as e:
+        print(f"An exception occurred while scraping link at index {index}: {e}")
+        AB.append("No Category Found")
+
+driver.quit()
+
+# Create DataFrame and save to CSV
+df = pd.DataFrame({
+    'UPC': rowy,
+    'Links': rows,
+    'RexelCategory': AB
+})
+
+# Convert the 'UPC' column to string to ensure it is treated as text
+df['UPC'] = "" + df['UPC'].astype(str)
+
+# Define your output file path
+output_file = f"{os.path.splitext(input_csv_file)[0]}_rexelUPC.xlsx"
+
+df.to_excel(output_file, index=False)
+
+print("File has been created.")
+
