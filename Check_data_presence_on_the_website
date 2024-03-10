@@ -1,0 +1,92 @@
+import pandas as pd
+import os
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.common.exceptions import TimeoutException
+
+options = Options()
+options.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'
+driver = webdriver.Firefox(options=options, executable_path='C:\webdrivers\geckodriver.exe')
+
+input_csv_file = r"C:\Users\PBansal\Desktop\Automation _data\code.csv"
+data = pd.read_csv(input_csv_file)
+
+def check_product_details(html_content, product_code):
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+        image = soup.find('img', alt=lambda x: x and product_code in x)
+        image_present = 'Yes' if image else 'No'
+
+        datasheet_button = soup.find('button', onclick=lambda x: x and '.pdf' in x)
+        datasheet_present = 'Yes' if datasheet_button else 'No'
+
+        overview_section = soup.find(lambda tag: tag.name == "h6" and "OVERVIEW" in tag.text)
+        overview_present = 'Yes' if overview_section else 'No'
+
+        return {
+            'image_present': image_present,
+            'Datasheet_present': datasheet_present,
+            'overview_present': overview_present
+        }
+
+    except Exception as e:
+        return str(e)
+
+# List of base URLs for different locations
+base_urls = [
+    'https://portland.portal.com/Product/',
+    'https://dallas.portal.com/Product/',
+    'https://houston.portal.com/Product/',
+    'https://boise.portal.com/Product/'
+]
+
+for ind in data.index:
+    catalog_no = str(data.at[ind, 'CatalogNo'])
+    use_column = str(data.at[ind, 'usecolumn'])
+
+    # Reset the details and sources for the current row
+    product_details_aggregated = {
+        'image_present': 'No',
+        'Datasheet_present': 'No',
+        'overview_present': 'No'
+    }
+    product_sources = {
+        'image_source': '',
+        'datasheet_source': '',
+        'overview_source': ''
+    }
+
+    # Iterate over each base URL for the current catalog_no and use_column
+    for base_url in base_urls:
+        catalog_url = base_url + use_column + "/" + catalog_no
+        try:
+            driver.get(catalog_url)
+            html_content = driver.page_source
+            product_details = check_product_details(html_content, catalog_no)
+
+            # Update the details and record the source if not already found
+            for key in product_details:
+                if product_details_aggregated[key] == 'No' and product_details[key] == 'Yes':
+                    product_details_aggregated[key] = 'Yes'
+                    product_sources[key + '_source'] = base_url
+
+        except TimeoutException:
+            print(f"Timeout occurred for {catalog_url}")
+
+        # Break out of the loop if all details are found
+        if all(value == 'Yes' for value in product_details_aggregated.values()):
+            break
+
+    # Update the DataFrame with the aggregated results and sources
+    for key, value in product_details_aggregated.items():
+        data.at[ind, key] = value
+
+    for key, url in product_sources.items():
+        data.at[ind, key] = url
+
+output_file = f"{os.path.splitext(input_csv_file)[0]}_output_file.csv"
+data.to_csv(output_file, index=False)
+
+driver.quit()
+
