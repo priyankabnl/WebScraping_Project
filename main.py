@@ -49,7 +49,7 @@ for j in chunker(data, 50):
                     # Search for the hyperlink
                     for link in soup.find_all('a', href=True):
                         if link['href'].startswith('/p/') and cat_number.lower() in link['href']:
-                            linky = 'https://www.rexelusa.com' + link['href']
+                            linky = 'https://www.usa.com' + link['href']
                             rows.append(linky)  # Add the hyperlink to the rows list
                             print(f"Hyperlink matched: {linky}")
                             product_found = True
