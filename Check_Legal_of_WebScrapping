@@ -1,0 +1,58 @@
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import pandas as pd
+from urllib.robotparser import RobotFileParser
+
+def can_fetch(url,retries=3, backoff_factor=0.5):
+    rp = RobotFileParser()
+    rp.set_url(url + '/robots.txt')
+    rp.read()
+
+    # Set up a Retry object with backoff factor
+    retry_strategy = Retry(
+        total=retries,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS"],  # Updated from 'method_whitelist'
+        backoff_factor=backoff_factor
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+
+    # Create a session that will automatically retry on server errors
+    with requests.Session() as session:
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        # Add a user-agent header to the request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+        }
+
+        try:
+            response = session.get(rp.url, headers=headers)
+            response.raise_for_status()  # will raise an HTTPError if the HTTP request returned an unsuccessful status code
+
+            rp.parse(response.text.splitlines())
+            # Check if the base path '/' is allowed for crawling
+            return rp.can_fetch("*", '/')
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP error: {e}")
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error: {e}")
+        except requests.exceptions.Timeout as e:
+            print(f"Timeout error: {e}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error: {e}")
+
+
+input_file = r"C:\Users\PBansal\Desktop\Automation _data\Links.xlsx"
+data = pd.read_excel(input_file)
+
+for website in data['links']:
+    try:
+        if can_fetch(website):
+            print(f"Crawling is allowed for {website}")
+        else:
+            print(f"Crawling is disallowed for {website}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error accessing {website}: {e}")
