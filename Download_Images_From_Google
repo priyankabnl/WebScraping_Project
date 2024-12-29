@@ -1,0 +1,123 @@
+import os
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
+from selenium.common.exceptions import TimeoutException
+import time
+import base64
+
+
+# Set up the Selenium WebDriver for Firefox
+def set_up_driver(download_folder):
+    options = Options()
+    options.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'
+    service = Service(executable_path=r'C:\webdrivers\geckodriver.exe')
+
+    # Set Firefox preferences to automatically download files without showing the save dialog
+    options.set_preference("browser.download.folderList", 2)
+    options.set_preference("browser.download.manager.showWhenStarting", True)
+    options.set_preference("browser.download.dir", download_folder)
+    options.set_preference("browser.helperApps.neverAsk.saveToDisk", "image/jpeg,image/png")
+
+    # Add headless option for better performance (optional)
+    options.headless = True
+
+    driver = webdriver.Firefox(options=options, service=service)
+
+    # Increase page load timeout
+    driver.set_page_load_timeout(600)  # Increase to 600 seconds (10 minutes) if needed
+
+    return driver
+
+
+# CSV file path
+input_file = r"C:\Users\PBansal\Desktop\Automation _data\codeforimages.csv"
+data = pd.read_csv(input_file)
+output_folder = r"C:\Users\PBansal\Desktop\Automation _data\Images_from_Google"
+
+# Ensure the output folder exists
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
+
+# Initialize WebDriver
+driver = set_up_driver(output_folder)
+
+
+# Function to download images from Google
+def download_images(search_term, driver, folder_path, num_images=5):
+    search_url = f"https://www.google.com/search?tbm=isch&q={search_term}"
+
+    # Attempt to load the page and handle timeout exceptions
+    try:
+        driver.get(search_url)
+    except TimeoutException:
+        print(f"TimeoutException: Failed to load {search_url}")
+        return
+
+    time.sleep(2)  # Wait for the page to load
+
+    # Use a set to avoid duplicate image URLs
+    image_urls = set()
+    images_downloaded = 0
+
+    while images_downloaded < num_images:
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        image_containers = soup.find_all('div', class_='H8Rx8c')
+
+        for container in image_containers:
+            if images_downloaded >= num_images:
+                break
+
+            image_tag = container.find('g-img')
+            if image_tag:
+                image_tag = image_tag.find('img')
+            if image_tag and 'src' in image_tag.attrs:
+                image_url = image_tag['src']
+
+                # Check if the image URL is base64 encoded
+                if image_url.startswith('data:image') and image_url not in image_urls:
+                    image_urls.add(image_url)
+                    try:
+                        # Extract the base64 data
+                        base64_data = image_url.split(',')[1]
+                        image_data = base64.b64decode(base64_data)
+                        with open(os.path.join(folder_path, f"image_{images_downloaded + 1}.jpg"), 'wb') as file:
+                            file.write(image_data)
+                        print(f"Downloaded {search_term} image {images_downloaded + 1}")
+                        images_downloaded += 1
+                    except Exception as e:
+                        print(f"Error downloading image {images_downloaded + 1} for {search_term}: {e}")
+
+        # Scroll down to load more images and wait
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)  # Wait longer for more images to load
+
+        # Adding an additional check for new images
+        new_soup = BeautifulSoup(driver.page_source, 'html.parser')
+        new_image_containers = new_soup.find_all('div', class_='H8Rx8c')
+
+        if len(new_image_containers) <= len(image_containers):
+            print("No more new images found, stopping search.")
+            break
+
+
+# Loop through each row in the CSV
+for index, row in data.iterrows():
+    search_term = f"{row['MFR']} {row['CatalogNo']}"
+    print(f"Searching for: {search_term}")
+
+    catalog_folder = os.path.join(output_folder, row['CatalogNo'])
+
+    # Ensure the catalog-specific folder exists
+    if not os.path.exists(catalog_folder):
+        os.makedirs(catalog_folder)
+
+    # Perform the image download
+    download_images(search_term, driver, catalog_folder)
+
+# Cleanup
+driver.quit()
+
